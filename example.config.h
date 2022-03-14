@@ -1,3 +1,3 @@
 
-String API_KEY = "FIREBASE WEB API KEY";
-String DB_URL= "<dbnamee>.firebaseio.com";
+#define API_KEY "WEB_API_KEY"
+#define DATABASE_URL "<db-name>.firebaseio.com"

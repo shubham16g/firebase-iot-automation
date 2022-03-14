@@ -1,5 +1,9 @@
-
+#if defined(ESP32)
+#include <WiFi.h>
+#elif defined(ESP8266)
 #include <ESP8266WiFi.h>
+#endif
+
 #include <Firebase_ESP_Client.h>
 #include <addons/TokenHelper.h>
 #include <addons/RTDBHelper.h>
@@ -11,14 +15,50 @@
 #define USER_EMAIL "samiot@gmail.com"
 #define USER_PASSWORD "nopassword"
 
-
+FirebaseData stream;
 FirebaseData fbdo;
+
 FirebaseAuth auth;
 FirebaseConfig config;
 
-void setup() {
-  // put your setup code here, to run once:
-Serial.begin(115200);
+void streamCallback(FirebaseStream data)
+{
+  Serial.printf("sream path, %s\nevent path, %s\ndata type, %s\nevent type, %s\n\n",
+                data.streamPath().c_str(),
+                data.dataPath().c_str(),
+                data.dataType().c_str(),
+                data.eventType().c_str());
+  printResult(data); // see addons/RTDBHelper.h
+  Serial.println();
+
+  // This is the size of stream payload received (current and max value)
+  // Max payload size is the payload size under the stream path since the stream connected
+  // and read once and will not update until stream reconnection takes place.
+  // This max value will be zero as no payload received in case of ESP8266 which
+  // BearSSL reserved Rx buffer size is less than the actual stream payload.
+  Serial.printf("Received stream payload size: %d (Max. %d)\n\n", data.payloadLength(), data.maxPayloadLength());
+
+  // Due to limited of stack memory, do not perform any task that used large memory here especially starting connect to server.
+  // Just set this flag and check it status later.
+}
+
+void streamTimeoutCallback(bool timeout)
+{
+  if (timeout)
+    Serial.println("stream timed out, resuming...\n");
+
+  if (!stream.httpConnected())
+    Serial.printf("error code: %d, reason: %s\n\n", stream.httpCode(), stream.errorReason().c_str());
+}
+
+void setup()
+{
+
+  // pins setup
+  pinMode(D1, INPUT);
+  pinMode(LED_BUILTIN, OUTPUT);
+
+  Serial.begin(115200);
 
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   Serial.print("Connecting to Wi-Fi");
@@ -32,68 +72,80 @@ Serial.begin(115200);
   Serial.println(WiFi.localIP());
   Serial.println();
 
+  Serial.printf("Firebase Client v%s\n\n", FIREBASE_CLIENT_VERSION);
+
   config.api_key = API_KEY;
-  config.database_url = DB_URL;
-  config.token_status_callback = tokenStatusCallback;
-  
+
   auth.user.email = USER_EMAIL;
   auth.user.password = USER_PASSWORD;
 
-  delay(300);
-  Serial.println("Starting Firebase Config");
-  
+  config.database_url = DATABASE_URL;
+
+  config.token_status_callback = tokenStatusCallback; // see addons/TokenHelper.h
+
   Firebase.begin(&config, &auth);
-  
-  Serial.println("Firebase Config DONE");
+
   Firebase.reconnectWiFi(true);
-  
-  Serial.println("Reconnect true");
-  Firebase.setDoubleDigits(5);
-  
-  Serial.println("Set double digits");
+
+// Recommend for ESP8266 stream, adjust the buffer size to match your stream data size
+#if defined(ESP8266)
+  stream.setBSSLBufferSize(2048, 512);
+#endif
+
+  if (!Firebase.RTDB.beginStream(&stream, "/test/stream/data"))
+    Serial.printf("sream begin error, %s\n\n", stream.errorReason().c_str());
+
+  Firebase.RTDB.setStreamCallback(&stream, streamCallback, streamTimeoutCallback);
+
+  /** Timeout options, below is default config.
+
+  //WiFi reconnect timeout (interval) in ms (10 sec - 5 min) when WiFi disconnected.
+  config.timeout.wifiReconnect = 10 * 1000;
+
+  //Socket begin connection timeout (ESP32) or data transfer timeout (ESP8266) in ms (1 sec - 1 min).
+  config.timeout.socketConnection = 30 * 1000;
+
+  //ESP32 SSL handshake in ms (1 sec - 2 min). This option doesn't allow in ESP8266 core library.
+  config.timeout.sslHandshake = 2 * 60 * 1000;
+
+  //Server response read timeout in ms (1 sec - 1 min).
+  config.timeout.serverResponse = 10 * 1000;
+
+  //RTDB Stream keep-alive timeout in ms (20 sec - 2 min) when no server's keep-alive event data received.
+  config.timeout.rtdbKeepAlive = 45 * 1000;
+
+  //RTDB Stream reconnect timeout (interval) in ms (1 sec - 1 min) when RTDB Stream closed and want to resume.
+  config.timeout.rtdbStreamReconnect = 1 * 1000;
+
+  //RTDB Stream error notification timeout (interval) in ms (3 sec - 30 sec). It determines how often the readStream
+  //will return false (error) when it called repeatedly in loop.
+  config.timeout.rtdbStreamError = 3 * 1000;
+
+  */
 }
 
+unsigned long sendDataPrevMillis = 0;
+int count = 0;
 
-bool taskCompleted = false;
-void loop() {
-  if (Firebase.ready() && !taskCompleted)
+void loop()
+{
+
+  if (digitalRead(D1) == HIGH)
   {
-    taskCompleted = true;
-
-    Serial.printf("Set timestamp... %s\n", Firebase.RTDB.setTimestamp(&fbdo, "/test/timestamp") ? "ok" : fbdo.errorReason().c_str());
-    
-    if (fbdo.httpCode() == FIREBASE_ERROR_HTTP_CODE_OK)
-    {
-      
-      //In setTimestampAsync, the following timestamp will be 0 because the response payload was ignored for all async functions.
-
-      //Timestamp saved in millisecond, get its seconds from int value
-      Serial.print("TIMESTAMP (Seconds): ");
-      Serial.println(fbdo.to<int>());
-
-      //Or print the total milliseconds from double value
-      //Due to bugs in Serial.print in Arduino library, use printf to print double instead.
-      printf("TIMESTAMP (milliSeconds): %lld\n", fbdo.to<uint64_t>());
-    }
-
-    Serial.printf("Get timestamp... %s\n", Firebase.RTDB.getDouble(&fbdo, "/test/timestamp") ? "ok" : fbdo.errorReason().c_str());
-    if (fbdo.httpCode() == FIREBASE_ERROR_HTTP_CODE_OK)
-      printf("TIMESTAMP: %lld\n", fbdo.to<uint64_t>());
-
-    //To set and push data with timestamp, requires the JSON data with .sv placeholder
-    FirebaseJson json;
-
-    json.set("Data", "Hello");
-    //now we will set the timestamp value at Ts
-    json.set("Ts/.sv", "timestamp"); // .sv is the required place holder for sever value which currently supports only string "timestamp" as a value
-
-    //Set data with timestamp
-    Serial.printf("Set data with timestamp... %s\n", Firebase.RTDB.setJSON(&fbdo, "/test/set/data", &json) ? fbdo.to<FirebaseJson>().raw() : fbdo.errorReason().c_str());
-
-    //Push data with timestamp
-    Serial.printf("Push data with timestamp... %s\n", Firebase.RTDB.pushJSON(&fbdo, "/test/push/data", &json) ? "ok" : fbdo.errorReason().c_str());
-
-    //Get previous pushed data
-    Serial.printf("Get previous pushed data... %s\n", Firebase.RTDB.getJSON(&fbdo, "/test/push/data/" + fbdo.pushName()) ? fbdo.to<FirebaseJson>().raw() : fbdo.errorReason().c_str());
+    digitalWrite(LED_BUILTIN, HIGH);
   }
+  else
+  {
+    digitalWrite(LED_BUILTIN, LOW);
+  }
+  
+  /* if (Firebase.ready() && (millis() - sendDataPrevMillis > 15000 || sendDataPrevMillis == 0))
+  {
+    sendDataPrevMillis = millis();
+    count++;
+    FirebaseJson json;
+    json.add("data", "hello");
+    json.add("num", count);
+    Serial.printf("Set json... %s\n\n", Firebase.RTDB.setJSON(&fbdo, "/test/stream/data/json", &json) ? "ok" : fbdo.errorReason().c_str());
+  } */
 }
