@@ -28,8 +28,10 @@ void streamCallback(FirebaseStream data)
                 data.dataPath().c_str(),
                 data.dataType().c_str(),
                 data.eventType().c_str());
-  printResult(data); // see addons/RTDBHelper.h
-  Serial.println();
+  
+  if(data.dataType() == "int"){
+    digitalWrite(LED_BUILTIN, data.intData());
+  }
 
   // This is the size of stream payload received (current and max value)
   // Max payload size is the payload size under the stream path since the stream connected
@@ -54,7 +56,7 @@ void streamTimeoutCallback(bool timeout)
 void setup()
 {
 
-  // pins setup
+  // pins
   pinMode(D1, INPUT);
   pinMode(LED_BUILTIN, OUTPUT);
 
@@ -92,7 +94,7 @@ void setup()
   stream.setBSSLBufferSize(2048, 512);
 #endif
 
-  if (!Firebase.RTDB.beginStream(&stream, "/test/stream/data"))
+  if (!Firebase.RTDB.beginStream(&stream, "/status"))
     Serial.printf("sream begin error, %s\n\n", stream.errorReason().c_str());
 
   Firebase.RTDB.setStreamCallback(&stream, streamCallback, streamTimeoutCallback);
@@ -127,18 +129,13 @@ void setup()
 unsigned long sendDataPrevMillis = 0;
 int count = 0;
 
+int state_d1 = LOW;
+bool is_d1 = true;
+
 void loop()
 {
+  handleInputs(LED_BUILTIN, state_d1, is_d1);
 
-  if (digitalRead(D1) == HIGH)
-  {
-    digitalWrite(LED_BUILTIN, HIGH);
-  }
-  else
-  {
-    digitalWrite(LED_BUILTIN, LOW);
-  }
-  
   /* if (Firebase.ready() && (millis() - sendDataPrevMillis > 15000 || sendDataPrevMillis == 0))
   {
     sendDataPrevMillis = millis();
@@ -148,4 +145,27 @@ void loop()
     json.add("num", count);
     Serial.printf("Set json... %s\n\n", Firebase.RTDB.setJSON(&fbdo, "/test/stream/data/json", &json) ? "ok" : fbdo.errorReason().c_str());
   } */
+}
+
+void handleInputs(int pin, int &state_d1, bool &is_d1)
+{
+  int newState_d1 = digitalRead(D1);
+  if (newState_d1 == LOW && is_d1 == true)
+  {
+    is_d1 = false;
+    state_d1 = state_d1 == LOW ? HIGH : LOW;
+    Serial.print(newState_d1);
+    Serial.println(state_d1);
+    digitalWrite(pin, state_d1);
+    pushStatus(pin, state_d1);
+    delay(300);
+  }
+  else if (newState_d1 == HIGH)
+  {
+    is_d1 = true;
+  }
+}
+
+void pushStatus(int pin, int state){
+  Serial.printf("Set int... %s\n\n", Firebase.RTDB.setInt(&fbdo, "/status/" + String(pin), state) ? "ok" : fbdo.errorReason().c_str());
 }
