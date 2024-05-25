@@ -4,13 +4,13 @@
 #include <ESP8266WiFi.h>
 #endif
 
+// https://github.com/mobizt/Firebase-ESP-Client
+// Firebase Arduiono Client Library for ESP8266 and ESP32
+// Version : 4.4.14
 #include <Firebase_ESP_Client.h>
 #include <addons/TokenHelper.h>
 #include <addons/RTDBHelper.h>
 #include "config.h"
-
-#define WIFI_SSID "Realme 9"
-#define WIFI_PASSWORD "11111123"
 
 #define USER_EMAIL "samiot@gmail.com"
 #define USER_PASSWORD "nopassword"
@@ -60,7 +60,7 @@ void setup()
   pinMode(D1, INPUT);
   pinMode(LED_BUILTIN, OUTPUT);
 
-  Serial.begin(115200);
+  Serial.begin(9600);
 
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   Serial.print("Connecting to Wi-Fi");
