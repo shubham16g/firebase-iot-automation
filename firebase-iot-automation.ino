@@ -1,5 +1,6 @@
 #include "connect_wifi.h"
 #include "connect_firebase.h"
+#include "pin_map.h"
 
 #define USER_EMAIL "samiot@gmail.com"
 #define USER_PASSWORD "nopassword"
@@ -27,6 +28,7 @@ void setup()
   Serial.begin(9600);
   connectWifi(WIFI_SSID, WIFI_PASSWORD);
   connectFirebase(USER_EMAIL, USER_PASSWORD);
+  get("/status", streamCallback);
   listen("/status", streamCallback);
 }
 

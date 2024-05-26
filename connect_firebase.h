@@ -74,9 +74,18 @@ void streamTimeoutCallback(bool timeout)
     Serial.printf("error code: %d, reason: %s\n\n", stream.httpCode(), stream.errorReason().c_str());
 }
 
+// typedef void (*ResultCallback)(int pin, int state, bool viaCloud);
+
 void listen(String path, FirebaseData::StreamEventCallback streamCallback) {
   if (!Firebase.RTDB.beginStream(&stream, path))
     Serial.printf("sream begin error, %s\n\n", stream.errorReason().c_str());
+
+  Firebase.RTDB.setStreamCallback(&stream, streamCallback, streamTimeoutCallback);
+}
+
+void get(String path, FirebaseData::StreamEventCallback streamCallback) {
+  if (!Firebase.RTDB.get(&stream, path))
+    Serial.printf("get error, %s\n\n", stream.errorReason().c_str());
 
   Firebase.RTDB.setStreamCallback(&stream, streamCallback, streamTimeoutCallback);
 }
