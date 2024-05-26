@@ -69,7 +69,7 @@ struct ResultBox
 };
 
 typedef void(ResultCallback)(int pin, int status, bool viaCloud);
-ResultCallback* globalCallback;
+ResultCallback *globalCallback;
 
 void pushStatus(String pinPath, int status, bool viaCloud = false)
 {
@@ -88,13 +88,20 @@ void streamTimeoutCallback(bool timeout)
 
 ResultBox getResult(FirebaseStream data, bool forceViaCloud = false)
 {
+  Serial.print("XXXXX------- GOT Data -------XXXXX \n");
+  Serial.printf("sream path, %s\nevent path, %s\ndata type, %s\nevent type, %s\n\n",
+                data.streamPath().c_str(),
+                data.dataPath().c_str(),
+                data.dataType().c_str(),
+                String(data.intData()));
+
   Serial.printf("Received stream payload size: %d (Max. %d)\n\n", data.payloadLength(), data.maxPayloadLength());
   if (data.dataType() == "string")
   {
     String payload = data.stringData();
     ResultBox result = {getPin(data.dataPath()), payload.substring(0, 1).toInt(), forceViaCloud ? true : payload.substring(2).toInt()};
-    Serial.printf("------- Received Data ------- \n");
     Serial.printf("streamPath: %s, status: %d, viaCloud: %s\n\n", data.dataPath(), result.status, result.viaCloud ? "true" : "false");
+    Serial.printf("XXXXX------- Received Data -------XXXXX \n");
     return result;
   }
   return {-1, -1, false};
@@ -102,22 +109,36 @@ ResultBox getResult(FirebaseStream data, bool forceViaCloud = false)
 
 void streamCallbackListen(FirebaseStream data)
 {
-  ResultBox result = getResult(data);
-  if (result.pin != -1)
+  if (data.dataType() == "json")
   {
-    globalCallback(result.pin, result.status, result.viaCloud);
+    Serial.print("YYYYYY------- GOT Data -------YYYYYY \n");
+    FirebaseJson &json = data.jsonObject();
+    FirebaseJsonData result;
+    for (int i = 0; i < pinPaths->length(); i++)
+    {
+      if (json.get(result, pinPaths[i].substring(1)))
+      {
+        if (result.type != "string" || result.stringValue.length() < 3)
+        {
+          continue;
+        }
+        String payload = result.stringValue;
+        ResultBox resultBox = {pins[i], payload.substring(0, 1).toInt(), true};
+        Serial.printf("streamPath: %s, status: %d, viaCloud: %s\n\n", pinPaths[i], resultBox.status, "true");
+        globalCallback(resultBox.pin, resultBox.status, true);
+      }
+    }
+    Serial.print("YYYYYY------- Received Data -------YYYYYY \n");
+  }
+  else
+  {
+    ResultBox result = getResult(data);
+    if (result.pin != -1)
+    {
+      globalCallback(result.pin, result.status, result.viaCloud);
+    }
   }
 }
-
-void streamCallbackGet(FirebaseStream data)
-{
-  ResultBox result = getResult(data, true);
-  if (result.pin != -1)
-  {
-    globalCallback(result.pin, result.status, result.viaCloud);
-  }
-}
-
 
 void listen(ResultCallback callback)
 {
@@ -134,5 +155,5 @@ void get(ResultCallback callback)
   if (!Firebase.RTDB.get(&stream, "/dstatus"))
     Serial.printf("get error, %s\n\n", stream.errorReason().c_str());
 
-  Firebase.RTDB.setStreamCallback(&stream, streamCallbackGet, streamTimeoutCallback);
+  Firebase.RTDB.setStreamCallback(&stream, streamCallbackListen, streamTimeoutCallback);
 }

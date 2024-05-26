@@ -21,6 +21,7 @@ void setup()
   connectFirebase(USER_EMAIL, USER_PASSWORD);
   get(callbackOut);
   listen(callbackOut);
+  delay(1000);
 }
 
 int state_d1 = LOW;
@@ -28,16 +29,13 @@ bool is_d1 = true;
 
 void loop()
 {
-  for (int i = 0; i < 6; i++)
-  {
-    handleInputs(pinPaths[i], state_d1, is_d1);
-  }
+  handleInputs(pinPaths[0], state_d1, is_d1);
 }
 
 void handleInputs(String pinPath, int &state, bool &inPin)
 {
   int newState = digitalRead(D1);
-  if (newState == LOW && inPin == true)
+  if (newState == HIGH && inPin == true)
   {
     inPin = false;
     state = state == LOW ? HIGH : LOW;
@@ -47,7 +45,7 @@ void handleInputs(String pinPath, int &state, bool &inPin)
     pushStatus(pinPath, state);
     delay(300);
   }
-  else if (newState == HIGH)
+  else if (newState == LOW)
   {
     inPin = true;
   }
