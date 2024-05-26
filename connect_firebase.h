@@ -61,6 +61,12 @@ void connectFirebase(String userEmail, String userPassword)
 }
 
 /// -------------------------- DB operations -----------------------------------
+struct ResultBox
+{
+  int pin;
+  int status;
+  bool viaCloud;
+};
 
 typedef void(ResultCallback)(int pin, int status, bool viaCloud);
 ResultCallback* globalCallback;
@@ -80,25 +86,36 @@ void streamTimeoutCallback(bool timeout)
     Serial.printf("error code: %d, reason: %s\n\n", stream.httpCode(), stream.errorReason().c_str());
 }
 
-void streamCallback(FirebaseStream data)
+void streamCallbackListen(FirebaseStream data)
 {
-  Serial.printf("sream path, %s\nevent path, %s\ndata type, %s\nevent type, %s\n\n",
-                data.streamPath().c_str(),
-                data.dataPath().c_str(),
-                data.dataType().c_str(),
-                String(data.intData()));
+  ResultBox result = getResult(data);
+  if (result.pin != -1)
+  {
+    globalCallback(result.pin, result.status, result.viaCloud);
+  }
+}
 
+void streamCallbackGet(FirebaseStream data)
+{
+  ResultBox result = getResult(data, true);
+  if (result.pin != -1)
+  {
+    globalCallback(result.pin, result.status, result.viaCloud);
+  }
+}
+
+ResultBox getResult(FirebaseStream data, bool forceViaCloud = false)
+{
+  Serial.printf("Received stream payload size: %d (Max. %d)\n\n", data.payloadLength(), data.maxPayloadLength());
   if (data.dataType() == "string")
   {
     String payload = data.stringData();
-    int status = payload.substring(0, 1).toInt();
-    bool viaCloud = payload.substring(2).toInt();
+    ResultBox result = {getPin(data.dataPath()), payload.substring(0, 1).toInt(), forceViaCloud ? true : payload.substring(2).toInt()};
     Serial.printf("------- Received Data ------- \n");
-    Serial.printf("streamPath: %s, status: %d, viaCloud: %s\n\n", data.dataPath(), status, viaCloud ? "true" : "false");
-
-    globalCallback(getPin(data.dataPath()), getStatus(status), viaCloud);
+    Serial.printf("streamPath: %s, status: %d, viaCloud: %s\n\n", data.dataPath(), result.status, result.viaCloud ? "true" : "false");
+    return result;
   }
-  Serial.printf("Received stream payload size: %d (Max. %d)\n\n", data.payloadLength(), data.maxPayloadLength());
+  return {-1, -1, false};
 }
 
 void listen(ResultCallback callback)
@@ -107,8 +124,7 @@ void listen(ResultCallback callback)
   if (!Firebase.RTDB.beginStream(&stream, "/dstatus"))
     Serial.printf("sream begin error, %s\n\n", stream.errorReason().c_str());
 
-  // use lemda function to pass the callback
-  Firebase.RTDB.setStreamCallback(&stream, streamCallback, streamTimeoutCallback);
+  Firebase.RTDB.setStreamCallback(&stream, streamCallbackListen, streamTimeoutCallback);
 }
 
 void get(ResultCallback callback)
@@ -117,5 +133,5 @@ void get(ResultCallback callback)
   if (!Firebase.RTDB.get(&stream, "/dstatus"))
     Serial.printf("get error, %s\n\n", stream.errorReason().c_str());
 
-  Firebase.RTDB.setStreamCallback(&stream, streamCallback, streamTimeoutCallback);
+  Firebase.RTDB.setStreamCallback(&stream, streamCallbackGet, streamTimeoutCallback);
 }
