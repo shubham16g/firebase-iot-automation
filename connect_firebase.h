@@ -5,6 +5,7 @@
 #include <addons/TokenHelper.h>
 #include <addons/RTDBHelper.h>
 #include "config.h"
+#include "pin_map.h"
 
 FirebaseData stream;
 FirebaseData fbdo;
@@ -21,7 +22,6 @@ void connectFirebase(String userEmail, String userPassword)
 
   auth.user.email = userEmail;
   auth.user.password = userPassword;
-
 
   config.token_status_callback = tokenStatusCallback; // see addons/TokenHelper.h
 
@@ -60,9 +60,15 @@ void connectFirebase(String userEmail, String userPassword)
   */
 }
 
-void pushStatus(String path, int state)
+/// -------------------------- DB operations -----------------------------------
+
+typedef void(ResultCallback)(int pin, int status, bool viaCloud);
+ResultCallback* globalCallback;
+
+void pushStatus(String pinPath, int status, bool viaCloud = false)
 {
-  Serial.printf("Set int... %s\n\n", Firebase.RTDB.setInt(&fbdo, path, state) ? "ok" : fbdo.errorReason().c_str());
+  Serial.printf("Pushing status... %s\n\n", Firebase.RTDB.setString(&fbdo, "/dstatus/" + pinPath, String(status) + "_" + String(viaCloud)) ? "OK" : fbdo.errorReason().c_str());
+  globalCallback(getPin(pinPath), status, true);
 }
 
 void streamTimeoutCallback(bool timeout)
@@ -74,17 +80,41 @@ void streamTimeoutCallback(bool timeout)
     Serial.printf("error code: %d, reason: %s\n\n", stream.httpCode(), stream.errorReason().c_str());
 }
 
-// typedef void (*ResultCallback)(int pin, int state, bool viaCloud);
+void streamCallback(FirebaseStream data)
+{
+  Serial.printf("sream path, %s\nevent path, %s\ndata type, %s\nevent type, %s\n\n",
+                data.streamPath().c_str(),
+                data.dataPath().c_str(),
+                data.dataType().c_str(),
+                String(data.intData()));
 
-void listen(String path, FirebaseData::StreamEventCallback streamCallback) {
-  if (!Firebase.RTDB.beginStream(&stream, path))
+  if (data.dataType() == "string")
+  {
+    String payload = data.stringData();
+    int status = payload.substring(0, 1).toInt();
+    bool viaCloud = payload.substring(2).toInt();
+    Serial.printf("------- Received Data ------- \n");
+    Serial.printf("streamPath: %s, status: %d, viaCloud: %s\n\n", data.dataPath(), status, viaCloud ? "true" : "false");
+
+    globalCallback(getPin(data.dataPath()), getStatus(status), viaCloud);
+  }
+  Serial.printf("Received stream payload size: %d (Max. %d)\n\n", data.payloadLength(), data.maxPayloadLength());
+}
+
+void listen(ResultCallback callback)
+{
+  globalCallback = callback;
+  if (!Firebase.RTDB.beginStream(&stream, "/dstatus"))
     Serial.printf("sream begin error, %s\n\n", stream.errorReason().c_str());
 
+  // use lemda function to pass the callback
   Firebase.RTDB.setStreamCallback(&stream, streamCallback, streamTimeoutCallback);
 }
 
-void get(String path, FirebaseData::StreamEventCallback streamCallback) {
-  if (!Firebase.RTDB.get(&stream, path))
+void get(ResultCallback callback)
+{
+  globalCallback = callback;
+  if (!Firebase.RTDB.get(&stream, "/dstatus"))
     Serial.printf("get error, %s\n\n", stream.errorReason().c_str());
 
   Firebase.RTDB.setStreamCallback(&stream, streamCallback, streamTimeoutCallback);

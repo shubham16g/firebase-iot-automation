@@ -4,7 +4,7 @@ String pinPaths[6] = {"/builtin", "/d2", "/d3", "/d4", "/d5", "/d6"};
 int getPin(String path) {
     for (int i = 0; i < 6; i++) {
         if (path == pinPaths[i]) {
-        return pins[i];
+            return pins[i];
         }
     }
     return -1;
