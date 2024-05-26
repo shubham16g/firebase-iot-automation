@@ -86,6 +86,20 @@ void streamTimeoutCallback(bool timeout)
     Serial.printf("error code: %d, reason: %s\n\n", stream.httpCode(), stream.errorReason().c_str());
 }
 
+ResultBox getResult(FirebaseStream data, bool forceViaCloud = false)
+{
+  Serial.printf("Received stream payload size: %d (Max. %d)\n\n", data.payloadLength(), data.maxPayloadLength());
+  if (data.dataType() == "string")
+  {
+    String payload = data.stringData();
+    ResultBox result = {getPin(data.dataPath()), payload.substring(0, 1).toInt(), forceViaCloud ? true : payload.substring(2).toInt()};
+    Serial.printf("------- Received Data ------- \n");
+    Serial.printf("streamPath: %s, status: %d, viaCloud: %s\n\n", data.dataPath(), result.status, result.viaCloud ? "true" : "false");
+    return result;
+  }
+  return {-1, -1, false};
+}
+
 void streamCallbackListen(FirebaseStream data)
 {
   ResultBox result = getResult(data);
@@ -104,19 +118,6 @@ void streamCallbackGet(FirebaseStream data)
   }
 }
 
-ResultBox getResult(FirebaseStream data, bool forceViaCloud = false)
-{
-  Serial.printf("Received stream payload size: %d (Max. %d)\n\n", data.payloadLength(), data.maxPayloadLength());
-  if (data.dataType() == "string")
-  {
-    String payload = data.stringData();
-    ResultBox result = {getPin(data.dataPath()), payload.substring(0, 1).toInt(), forceViaCloud ? true : payload.substring(2).toInt()};
-    Serial.printf("------- Received Data ------- \n");
-    Serial.printf("streamPath: %s, status: %d, viaCloud: %s\n\n", data.dataPath(), result.status, result.viaCloud ? "true" : "false");
-    return result;
-  }
-  return {-1, -1, false};
-}
 
 void listen(ResultCallback callback)
 {
