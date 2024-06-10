@@ -1,6 +1,7 @@
 // https://github.com/mobizt/Firebase-ESP-Client
 // Firebase Arduiono Client Library for ESP8266 and ESP32
 // Version : 4.4.14
+#pragma once
 #include <Firebase_ESP_Client.h>
 #include <addons/TokenHelper.h>
 #include <addons/RTDBHelper.h>
